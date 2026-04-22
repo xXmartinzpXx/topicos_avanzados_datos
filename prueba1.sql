@@ -103,32 +103,31 @@ END;
 un método get_reporte. Luego, crea una tabla basada en ese tipo y transfiere los datos de Incidentes a esa tabla. 
 Finalmente, escribe un cursor explícito que liste la información de los incidentes usando el método get_reporte.*/
 
-DECLARE
+Declare
     TYPE incidente_obj IS OBJECT (
         incidente_id NUMBER,
-        descripcion VARCHAR2(100),
+        descripcion VARCHAR2(255),
         MEMBER FUNCTION get_reporte RETURN VARCHAR2
     );
-    
-    FUNCTION get_reporte(self IN incidente_obj) RETURN VARCHAR2 IS
-    BEGIN
-        RETURN 'Incidente ID: ' || self.incidente_id || ', Descripción: ' || self.descripcion;
-    END;
     
     TYPE incidente_table IS TABLE OF incidente_obj;
     
     v_incidentes incidente_table;
-BEGIN
-    SELECT incidente_obj(IncidenteID, Descripcion)
-    BULK COLLECT INTO v_incidentes
-    FROM Incidentes;
     
-    FOR i IN 1 .. v_incidentes.COUNT LOOP
-        DBMS_OUTPUT.PUT_LINE(v_incidentes(i).get_reporte());
+    CURSOR c_incidentes IS
+        SELECT IncidenteID, Descripcion
+        FROM Incidentes;
+BEGIN
+    OPEN c_incidentes;
+    LOOP
+        FETCH c_incidentes INTO v_incidentes;
+        EXIT WHEN c_incidentes%NOTFOUND;
+        DBMS_OUTPUT.PUT_LINE('Incidente ID: ' || v_incidentes.incidente_id || ', Descripción: ' || v_incidentes.descripcion);
     END LOOP;
+    CLOSE c_incidentes;
 EXCEPTION
     WHEN OTHERS THEN
-        DBMS_OUTPUT.PUT_LINE('Error al ejecutar el bloque PL/SQL: ' || SQLERRM);
+        DBMS_OUTPUT.PUT_LINE('Error al listar los incidentes: ' || SQLERRM);
 END;
 /
 
