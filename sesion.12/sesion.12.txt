@@ -1,0 +1,91 @@
+-- Sesion 12.1
+
+CREATE OR REPLACE FUNCTION calcular_total_con_descuento(
+    v_id_pedido IN NUMBER
+) RETURN NUMBER AS
+    num_total_actual NUMBER;
+BEGIN
+    -- Se rescata el total del pedido correspondiente
+    SELECT Total 
+    INTO num_total_actual
+    FROM Pedidos
+    WHERE PedidoID = v_id_pedido;
+
+    -- Se evalúa si cumple la condición para recibir la rebaja del 10%
+    IF num_total_actual > 1000 THEN
+        num_total_actual := num_total_actual * 0.9; 
+    END IF;
+
+    RETURN num_total_actual;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        -- Retorna un error de aplicación si no halla el pedido
+        RAISE_APPLICATION_ERROR(-20004, 'No se pudo localizar el pedido con la clave: ' || v_id_pedido);
+END;
+/
+
+CREATE OR REPLACE PROCEDURE aplicar_descuento_pedido(
+    v_id_pedido IN NUMBER
+) AS
+    num_total_nuevo NUMBER;
+BEGIN
+    -- Invocamos la función para obtener el monto recalculado
+    num_total_nuevo := calcular_total_con_descuento(v_id_pedido);
+
+    -- Impactamos el nuevo valor en la base de datos
+    UPDATE Pedidos
+    SET Total = num_total_nuevo
+    WHERE PedidoID = v_id_pedido;
+
+    DBMS_OUTPUT.PUT_LINE('Se ha actualizado el pedido ' || v_id_pedido || '. Nuevo monto: ' || num_total_nuevo);
+    
+    COMMIT;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Fallo durante la operación: ' || SQLERRM);
+        ROLLBACK;
+END;
+/
+
+-- Bloque de prueba de sesión
+SET SERVEROUTPUT ON;
+EXEC aplicar_descuento_pedido(101);
+
+
+-- Sesion 12.2
+
+SET SERVEROUTPUT ON;
+
+CREATE OR REPLACE TRIGGER validar_cantidad_detalle
+BEFORE INSERT OR UPDATE ON DetallesPedidos
+FOR EACH ROW
+BEGIN
+    -- Validar regla de negocio de cantidades positivas
+    IF :NEW.Cantidad <= 0 THEN
+        RAISE_APPLICATION_ERROR(-20005, 'El valor ingresado en Cantidad no puede ser negativo ni cero.');
+    END IF;
+END;
+/
+
+-- Bloque de prueba de inserción incorrecta
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Ejecutando prueba de inserción con cantidad inválida (negativa)...');
+    INSERT INTO DetallesPedidos VALUES (3, 102, 1, -1);
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Se capturó el error esperado: ' || SQLERRM);
+END;
+/
+
+-- Bloque de prueba de inserción correcta
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Ejecutando prueba de inserción con cantidad lícita (mayor a 0)...');
+    INSERT INTO DetallesPedidos VALUES (4, 102, 1, 3); 
+    DBMS_OUTPUT.PUT_LINE('La fila ha sido insertada con éxito en DetallesPedidos.');
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Se produjo un error no previsto: ' || SQLERRM);
+END;
+/

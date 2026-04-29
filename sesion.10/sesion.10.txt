@@ -1,0 +1,80 @@
+-- Sesion 10.1
+
+SET SERVEROUTPUT ON;
+
+CREATE OR REPLACE PROCEDURE actualizar_total_pedidos(
+    v_id_cliente IN NUMBER, 
+    v_porcentaje_inc IN NUMBER DEFAULT 10
+) AS
+    -- Declaramos el cursor para obtener los pedidos del cliente
+    CURSOR cur_pedidos_cli IS
+        SELECT PedidoID, Total
+        FROM Pedidos
+        WHERE ClienteID = v_id_cliente
+        FOR UPDATE;
+BEGIN
+    FOR reg_pedido IN cur_pedidos_cli LOOP
+        -- Se actualiza el registro actual apuntado por el cursor
+        UPDATE Pedidos
+        SET Total = reg_pedido.Total * (1 + v_porcentaje_inc / 100)
+        WHERE CURRENT OF cur_pedidos_cli;
+        
+        DBMS_OUTPUT.PUT_LINE('ID Pedido: ' || reg_pedido.PedidoID || ' | Total actualizado a: ' || (reg_pedido.Total * (1 + v_porcentaje_inc / 100)));
+    END LOOP;
+    
+    -- Verificamos si se afectaron filas en el proceso
+    IF SQL%ROWCOUNT = 0 THEN
+        DBMS_OUTPUT.PUT_LINE('El cliente con ID ' || v_id_cliente || ' carece de pedidos registrados.');
+    ELSE
+        COMMIT;
+    END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Se ha producido un error inesperado: ' || SQLERRM);
+        ROLLBACK;
+END;
+/
+
+-- Bloque de prueba
+EXEC actualizar_total_pedidos(1, 15);
+
+
+-- Sesion 10.2
+
+
+SET SERVEROUTPUT ON;
+
+CREATE OR REPLACE PROCEDURE calcular_costo_detalle(
+    v_id_detalle IN NUMBER, 
+    v_costo_total OUT NUMBER
+) AS
+BEGIN
+    -- Obtenemos el cálculo directamente mediante un INNER JOIN
+    SELECT (det.Cantidad * prod.Precio)
+    INTO v_costo_total
+    FROM DetallesPedidos det
+    INNER JOIN Productos prod ON det.ProductoID = prod.ProductoID
+    WHERE det.DetalleID = v_id_detalle;
+
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('No se ha encontrado ningún registro para el DetalleID: ' || v_id_detalle);
+        v_costo_total := NULL;
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Ha ocurrido una excepción: ' || SQLERRM);
+        v_costo_total := NULL;
+END;
+/
+
+-- Bloque anónimo de prueba
+DECLARE
+    num_costo_resultado NUMBER;
+BEGIN
+    calcular_costo_detalle(1, num_costo_resultado);
+    
+    IF num_costo_resultado IS NOT NULL THEN
+        DBMS_OUTPUT.PUT_LINE('El costo calculado para este detalle es: ' || num_costo_resultado);
+    END IF;
+END;
+/
