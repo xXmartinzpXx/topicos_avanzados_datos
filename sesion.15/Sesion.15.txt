@@ -1,0 +1,46 @@
+--Sesion 15.1
+/*Crea un índice compuesto en la tabla DetallesPedidos para las columnas PedidoID y 
+ProductoID. Luego, escribe una consulta que use este índice y analiza su plan de ejecución.*/
+
+-- Crear índice compuesto
+CREATE INDEX idx_lineas_pedido_articulo ON DetallesPedidos(PedidoID, ProductoID);
+
+-- Consulta que usa el índice
+EXPLAIN PLAN FOR
+SELECT * FROM DetallesPedidos
+WHERE PedidoID = 108 AND ProductoID = 1;
+SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY);
+
+-- Ejecutar la consulta
+SELECT * FROM DetallesPedidos
+WHERE PedidoID = 108 AND ProductoID = 1;
+
+
+--Sesion 15.2
+/*Crea una tabla Movimientos particionada por hash usando la columna CodigoCliente (4 particiones). 
+Inserta datos de Pedidos y escribe una consulta que muestre el total de ventas por cliente, 
+verificando que las particiones se usen.*/
+
+DROP TABLE Movimientos;
+
+CREATE TABLE Movimientos (
+    MovimientoID NUMBER PRIMARY KEY,
+    CodigoCliente NUMBER,
+    Importe NUMBER,
+    FechaRegistro DATE
+)
+PARTITION BY HASH (CodigoCliente) 
+PARTITIONS 4;
+
+INSERT INTO Movimientos (MovimientoID, CodigoCliente, Importe)
+SELECT 
+    PedidoID,
+    ClienteID,
+    Total
+FROM Pedidos
+WHERE ClienteID IS NOT NULL;
+
+-- Consulta que muestra el total de ventas por cliente
+SELECT CodigoCliente, SUM(Importe) as ImporteTotal
+FROM Movimientos
+GROUP BY CodigoCliente;

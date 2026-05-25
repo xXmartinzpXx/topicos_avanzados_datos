@@ -1,0 +1,93 @@
+--Sesion 13.1
+/*Crea un procedimiento actualizar_inventario_pedido que reciba un PedidoID (parámetro IN) y reduzca la cantidad de productos 
+en una tabla Inventario (crea la tabla si no existe) según los detalles del pedido. Usa savepoints para manejar errores si no hay 
+suficiente inventario.*/
+
+CREATE TABLE Tbl_Stock (
+    Id_Articulo NUMBER PRIMARY KEY,
+    Unidades NUMBER
+);
+
+INSERT INTO Tbl_Stock VALUES (101, 500);
+INSERT INTO Tbl_Stock VALUES (202, 750);
+
+CREATE OR REPLACE PROCEDURE procesar_stock_orden(param_orden_id IN NUMBER) AS
+    CURSOR cur_lineas_pedido IS
+        SELECT ProductoID, Cantidad
+        FROM DetallesPedidos
+        WHERE PedidoID = param_orden_id;
+        
+    v_stock_registrado NUMBER;
+BEGIN
+    FOR fila_item IN cur_lineas_pedido LOOP
+        
+        SELECT Unidades INTO v_stock_registrado
+        FROM Tbl_Stock
+        WHERE Id_Articulo = fila_item.ProductoID;
+     
+        SAVEPOINT sp_previo_descuento;
+     
+        IF v_stock_registrado < fila_item.Cantidad THEN
+            RAISE_APPLICATION_ERROR(-20001, 'No hay stock suficiente para el artículo ' || fila_item.ProductoID);
+        END IF;
+     
+        UPDATE Tbl_Stock
+        SET Unidades = Unidades - fila_item.Cantidad
+        WHERE Id_Articulo = fila_item.ProductoID;
+     
+        DBMS_OUTPUT.PUT_LINE('Se ha procesado con éxito el artículo ' || fila_item.ProductoID);
+    END LOOP;
+    COMMIT;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        DBMS_OUTPUT.PUT_LINE('Alerta: El identificador del producto no figura en los registros.');
+        ROLLBACK;
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error en el bloque transaccional: ' || SQLERRM);
+        ROLLBACK TO sp_previo_descuento;
+        COMMIT;
+END;
+/
+
+-- prueba
+SET SERVEROUTPUT ON;
+EXEC procesar_stock_orden(101);
+
+
+--Sesion 13.2
+/*Diseña una tabla de hechos Fact_Pedidos y una dimensión Dim_Ciudad para un Data 
+Warehouse basado en curso_topicos. Escribe una consulta analítica que muestre el 
+total de ventas por ciudad y año.*/
+
+CREATE TABLE Dimension_Localidad (
+	Id_Localidad NUMBER PRIMARY KEY,
+	Nombre_Ubicacion VARCHAR2(50)
+);
+
+INSERT INTO Dimension_Localidad (Id_Localidad, Nombre_Ubicacion)
+SELECT ROWNUM, Ciudad
+FROM (SELECT DISTINCT Ciudad FROM Clientes);
+
+CREATE TABLE Tabla_Hechos_Ventas (
+	Id_Orden NUMBER,
+	Id_Comprador NUMBER,
+	Id_Localidad NUMBER,
+	Id_Fecha NUMBER,
+	Monto_Total NUMBER,
+	CONSTRAINT fk_ventas_cliente FOREIGN KEY (Id_Comprador) REFERENCES Dim_Cliente(ClienteID),
+	CONSTRAINT fk_ventas_localidad FOREIGN KEY (Id_Localidad) REFERENCES Dimension_Localidad(Id_Localidad),
+	CONSTRAINT fk_ventas_tiempo FOREIGN KEY (Id_Fecha) REFERENCES Dim_Tiempo(FechaID)
+);
+
+INSERT INTO Tabla_Hechos_Ventas (Id_Orden, Id_Comprador, Id_Localidad, Id_Fecha, Monto_Total)
+SELECT ord.PedidoID, ord.ClienteID, d_loc.Id_Localidad, d_fec.FechaID, ord.Total
+FROM Pedidos ord
+JOIN Clientes cli ON ord.ClienteID = cli.ClienteID
+JOIN Dimension_Localidad d_loc ON cli.Ciudad = d_loc.Nombre_Ubicacion
+JOIN Dim_Tiempo d_fec ON ord.FechaPedido = d_fec.Fecha;
+
+SELECT d_loc.Nombre_Ubicacion, d_fec.Año, SUM(thv.Monto_Total) AS Ingresos_Totales
+FROM Tabla_Hechos_Ventas thv
+JOIN Dimension_Localidad d_loc ON thv.Id_Localidad = d_loc.Id_Localidad
+JOIN Dim_Tiempo d_fec ON thv.Id_Fecha = d_fec.FechaID
+GROUP BY d_loc.Nombre_Ubicacion, d_fec.Año;

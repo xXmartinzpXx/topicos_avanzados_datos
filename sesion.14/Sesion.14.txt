@@ -1,0 +1,84 @@
+--Sesion 14.1
+/*Crea un supertipo Medio_Transporte con atributos Fabricante y Anio_Fabricacion, y un método calcular_tiempo_uso. 
+Luego, crea un subtipo Coche que herede de Medio_Transporte, con un atributo adicional 
+Cant_Puertas y un método mostrar_info que devuelva una cadena con los detalles del 
+automóvil.*/
+SET SERVEROUTPUT ON;
+
+CREATE OR REPLACE TYPE Medio_Transporte AS OBJECT (
+    Fabricante VARCHAR2(50),
+    Anio_Fabricacion NUMBER,
+    MEMBER FUNCTION calcular_tiempo_uso RETURN NUMBER
+) NOT FINAL;
+/
+CREATE OR REPLACE TYPE BODY Medio_Transporte AS 
+    MEMBER FUNCTION calcular_tiempo_uso RETURN NUMBER IS
+    BEGIN
+        RETURN EXTRACT(YEAR FROM SYSDATE) - Anio_Fabricacion;
+    END;
+END;
+/
+CREATE OR REPLACE TYPE Coche UNDER Medio_Transporte (
+    Cant_Puertas NUMBER,
+    MEMBER FUNCTION mostrar_info RETURN VARCHAR2
+);
+/
+CREATE OR REPLACE TYPE BODY Coche AS 
+    MEMBER FUNCTION mostrar_info RETURN VARCHAR2 IS
+    BEGIN
+        RETURN 'Coche marca: ' || Fabricante || ', del año: ' || Anio_Fabricacion || ', con ' || Cant_Puertas || ' puertas.';
+    END;
+END;
+/
+CREATE OR REPLACE TYPE Transporte_Pesado UNDER Medio_Transporte (
+    Limite_Kilos NUMBER,
+    MEMBER FUNCTION mostrar_info RETURN VARCHAR2
+);
+/
+CREATE OR REPLACE TYPE BODY Transporte_Pesado AS 
+    MEMBER FUNCTION mostrar_info RETURN VARCHAR2 IS
+    BEGIN
+        RETURN 'Vehículo pesado: ' || Fabricante || ' (' || Anio_Fabricacion || '), Máx Carga: ' || Limite_Kilos || ' kg.';
+    END;
+END;
+/
+--prueba
+
+CREATE TABLE Registro_Flota OF Medio_Transporte;
+INSERT INTO Registro_Flota VALUES (Coche('Toyota', 2020, 4));
+INSERT INTO Registro_Flota VALUES (Transporte_Pesado('Volvo', 2018, 12000));
+
+SELECT tr.Fabricante,
+       tr.calcular_tiempo_uso() AS Anios_Uso,
+       CASE
+           WHEN VALUE(tr) IS OF (Coche) THEN TREAT(VALUE(tr) AS Coche).mostrar_info()
+           WHEN VALUE(tr) IS OF (Transporte_Pesado) THEN TREAT(VALUE(tr) AS Transporte_Pesado).mostrar_info()
+           ELSE 'Categoría de transporte no reconocida'
+       END AS Detalles_Extra
+FROM Registro_Flota tr;
+
+
+--Sesion 14.2
+/*Crea un subtipo Transporte_Pesado que herede de Medio_Transporte, con un atributo adicional Toneladas_Soportadas 
+(en toneladas) y sobrescriba el método calcular_tiempo_uso para sumar 2 años adicionales 
+(los camiones envejecen más rápido). Inserta un camión en la tabla Registro_Flota y consulta 
+su antigüedad y descripción.*/
+
+CREATE OR REPLACE TYPE Transporte_Pesado UNDER Medio_Transporte (
+    Toneladas_Soportadas NUMBER,
+    OVERRIDING MEMBER FUNCTION calcular_tiempo_uso RETURN NUMBER
+);
+/
+CREATE OR REPLACE TYPE BODY Transporte_Pesado AS
+    OVERRIDING MEMBER FUNCTION calcular_tiempo_uso RETURN NUMBER IS
+    BEGIN
+        RETURN (2025 - Anio_Fabricacion) + 2; 
+    END;
+END;
+/
+
+INSERT INTO Registro_Flota VALUES (Transporte_Pesado('Volvo', 2018, 10));
+
+SELECT tr.Fabricante, tr.calcular_tiempo_uso() AS Anios_Uso
+FROM Registro_Flota tr
+WHERE VALUE(tr) IS OF (Transporte_Pesado);
